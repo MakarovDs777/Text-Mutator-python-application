@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 import os
 import random
+from datetime import datetime  
 from pathlib import Path
 from collections import Counter
 
@@ -333,7 +334,6 @@ def update_symbol_statistics():
         stats_text = f"СТАТИСТИКА СИМВОЛОВ\n"
         stats_text += f"Всего символов: {total_chars}\n"
         stats_text += f"Уникальных символов: {unique_chars}\n\n"
-        
         stats_text += "ПОСИМВОЛЬНАЯ СТАТИСТИКА:\n"
         stats_text += "№\tСимвол\tUnicode\tКоличество\tПроцент\tЧастота/1000\n"
         for i, (char, count) in enumerate(sorted_chars, 1):
@@ -344,48 +344,151 @@ def update_symbol_statistics():
                 char_display = "\\t"
             elif char == ' ':
                 char_display = "␣"
-            
             percentage = (count / total_chars) * 100
             frequency_per_1000 = (count / total_chars) * 1000
             stats_text += f"{i}\t{char_display}\tU+{ord(char):04X}\t{count}\t{percentage:.4f}%\t{frequency_per_1000:.2f}\n"
-        
         root.clipboard_clear()
         root.clipboard_append(stats_text)
         messagebox.showinfo("Успех", "Статистика скопирована в буфер обмена!")
-    
-    copy_btn = tk.Button(scrollable_frame, text="📋 Копировать статистику", 
-                         command=copy_statistics, bg="lightblue")
-    copy_btn.pack(pady=20)
-    
-    # Кнопка для копирования статистики
-    def copy_statistics():
-        """Копирует статистику в буфер обмена."""
-        stats_text = f"СТАТИСТИКА СИМВОЛОВ\n"
-        stats_text += f"Всего символов: {total_chars}\n"
-        stats_text += f"Уникальных символов: {unique_chars}\n\n"
+
+    def save_statistics_to_file():
+        """Сохраняет статистику в текстовый файл."""
+        if not current_text_for_analysis:
+            messagebox.showwarning("Внимание", "Нет данных для сохранения.")
+            return
         
-        stats_text += "ПОСИМВОЛЬНАЯ СТАТИСТИКА:\n"
-        stats_text += "№\tСимвол\tUnicode\tКоличество\tПроцент\tЧастота/1000\n"
-        for i, (char, count) in enumerate(sorted_chars, 1):
-            char_display = char
-            if char == '\n':
-                char_display = "\\n"
-            elif char == '\t':
-                char_display = "\\t"
-            elif char == ' ':
-                char_display = "␣"
+        # Предлагаем выбрать место для сохранения
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".txt",
+            filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
+            initialfile=f"symbol_statistics_{len(current_text_for_analysis)}_chars.txt"
+        )
+        
+        if not file_path:
+            return  # Пользователь отменил сохранение
+        
+        try:
+            # Формируем полную статистику
+            stats_text = "=" * 60 + "\n"
+            stats_text += "СТАТИСТИКА СИМВОЛОВ\n"
+            stats_text += "=" * 60 + "\n\n"
             
-            percentage = (count / total_chars) * 100
-            frequency_per_1000 = (count / total_chars) * 1000
-            stats_text += f"{i}\t{char_display}\tU+{ord(char):04X}\t{count}\t{percentage:.4f}%\t{frequency_per_1000:.2f}\n"
-        
-        root.clipboard_clear()
-        root.clipboard_append(stats_text)
-        messagebox.showinfo("Успех", "Статистика скопирована в буфер обмена!")
+            # Общая информация
+            stats_text += f"📊 ОБЩАЯ ИНФОРМАЦИЯ:\n"
+            stats_text += f"• Всего символов в тексте: {total_chars:,}\n"
+            stats_text += f"• Уникальных символов: {unique_chars}\n"
+            stats_text += f"• Дата анализа: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+            
+            # Посимвольная статистика
+            stats_text += "🔤 ПОСИМВОЛЬНАЯ СТАТИСТИКА:\n"
+            stats_text += "-" * 80 + "\n"
+            stats_text += "№\tСимвол\t\tUnicode\t\tКоличество\tПроцент\t\tЧастота/1000\n"
+            stats_text += "-" * 80 + "\n"
+            
+            for i, (char, count) in enumerate(sorted_chars, 1):
+                # Отображаем символ
+                if char == '\n':
+                    char_display = "\\n (перенос строки)"
+                elif char == '\t':
+                    char_display = "\\t (табуляция)"
+                elif char == ' ':
+                    char_display = "␣ (пробел)"
+                elif ord(char) < 32:
+                    char_display = f"\\x{ord(char):02x} (управляющий)"
+                else:
+                    char_display = char
+                
+                percentage = (count / total_chars) * 100
+                frequency_per_1000 = (count / total_chars) * 1000
+                
+                stats_text += f"{i}\t{char_display:<15}\tU+{ord(char):04X}\t{count:>10,}\t{percentage:>10.4f}%\t{frequency_per_1000:>10.2f}\n"
+            
+            stats_text += "\n" + "=" * 60 + "\n"
+            stats_text += "📈 КАТЕГОРИИ СИМВОЛОВ:\n"
+            stats_text += "-" * 60 + "\n"
+            
+            # Категории символов (используем те же категории, что и в GUI)
+            categories = {
+                "Буквы (латиница)": lambda c: c.isalpha() and ('a' <= c.lower() <= 'z'),
+                "Буквы (кириллица)": lambda c: c.isalpha() and ('а' <= c.lower() <= 'я'),
+                "Цифры": lambda c: c.isdigit(),
+                "Пробелы": lambda c: c == ' ',
+                "Переносы строк": lambda c: c == '\n',
+                "Табуляции": lambda c: c == '\t',
+                "Знаки препинания": lambda c: c in '.,!?;:"\'()[]{}<>-—–…',
+                "Специальные символы": lambda c: not (c.isalpha() or c.isdigit() or c.isspace() or c in '.,!?;:"\'()[]{}<>-—–…')
+            }
+            
+            for category_name, check_func in categories.items():
+                count = sum(1 for char in current_text_for_analysis if check_func(char))
+                if count > 0:
+                    percentage = (count / total_chars) * 100
+                    stats_text += f"• {category_name:<25}: {count:>8,} ({percentage:>6.2f}%)\n"
+            
+            stats_text += "\n" + "=" * 60 + "\n"
+            stats_text += "🏆 ТОП-10 САМЫХ ЧАСТЫХ СИМВОЛОВ:\n"
+            stats_text += "-" * 60 + "\n"
+            
+            for i, (char, count) in enumerate(sorted_chars[:10], 1):
+                percentage = (count / total_chars) * 100
+                char_display = char
+                if char == '\n':
+                    char_display = "\\n"
+                elif char == '\t':
+                    char_display = "\\t"
+                elif char == ' ':
+                    char_display = "␣"
+                
+                stats_text += f"{i:>2}. '{char_display}' - {count:>8,} раз ({percentage:>6.2f}%)\n"
+            
+            # Редкие символы
+            rare_chars = [(char, count) for char, count in sorted_chars if count == 1]
+            if rare_chars:
+                stats_text += "\n" + "=" * 60 + "\n"
+                stats_text += f"🔍 РЕДКИЕ СИМВОЛЫ (встречаются 1 раз, всего {len(rare_chars)}):\n"
+                stats_text += "-" * 60 + "\n"
+                
+                for i, (char, _) in enumerate(rare_chars[:50], 1):
+                    if char == '\n':
+                        display = "'\\n' (U+000A)"
+                    elif char == '\t':
+                        display = "'\\t' (U+0009)"
+                    elif char == ' ':
+                        display = "'␣' (U+0020)"
+                    elif ord(char) < 32:
+                        display = f"'\\x{ord(char):02x}' (U+{ord(char):04X})"
+                    else:
+                        display = f"'{char}' (U+{ord(char):04X})"
+                    
+                    stats_text += f"{display}, "
+                    if i % 5 == 0:
+                        stats_text += "\n"
+                
+                if len(rare_chars) > 50:
+                    stats_text += f"\n... и еще {len(rare_chars) - 50} редких символов"
+            
+            # Сохраняем в файл
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(stats_text)
+            
+            messagebox.showinfo("Успех", f"Статистика сохранена в файл:\n{os.path.basename(file_path)}")
+            
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось сохранить файл: {e}")
+
+    # Фрейм для кнопок
+    buttons_frame = tk.Frame(scrollable_frame)
+    buttons_frame.pack(pady=20)
     
-    copy_btn = tk.Button(scrollable_frame, text="📋 Копировать статистику", 
-                         command=copy_statistics, bg="lightblue")
-    copy_btn.pack(pady=20)
+    # Кнопка копирования
+    copy_btn = tk.Button(buttons_frame, text="📋 Копировать статистику",
+                         command=copy_statistics, bg="lightblue", width=20)
+    copy_btn.pack(side=tk.LEFT, padx=(0, 10))
+    
+    # Кнопка сохранения в файл
+    save_btn = tk.Button(buttons_frame, text="📥 Скачать статистику",
+                         command=save_statistics_to_file, bg="lightgreen", width=20)
+    save_btn.pack(side=tk.LEFT)
 
 def mix_words(percentage1, percentage2):
     """Смешивает слова из двух файлов в указанном процентном соотношении."""
